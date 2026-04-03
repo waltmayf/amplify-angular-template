@@ -3,7 +3,7 @@ backend:
   phases:
     build:
       commands:
-        - echo "Build environment is $CODEBUILD_BUILD_IMAGE"
+        - export NODE_OPTIONS="--max-old-space-size=4096"
         - corepack enable
         - corepack prepare pnpm@latest --activate
         - pnpm install --frozen-lockfile
@@ -17,6 +17,7 @@ frontend:
         - pnpm install --frozen-lockfile
     build:
       commands:
+        - export NODE_OPTIONS="--max-old-space-size=4096"
         - pnpm ng build --configuration=production
   artifacts:
     baseDirectory: dist/amplify-angular-template/browser
