@@ -1,7 +1,59 @@
 <div class="explorer-container">
   <header class="explorer-header">
-    <h1>🛢️ Oil &amp; Gas Maintenance Explorer</h1>
-    <p class="subtitle">Hierarchical data powered by DynamoDB via AWS Amplify GraphQL</p>
+    <div class="header-top">
+      <div class="header-title">
+        <h1>🛢️ Oil &amp; Gas Maintenance Explorer</h1>
+        <p class="subtitle">Hierarchical data powered by DynamoDB via AWS Amplify GraphQL</p>
+      </div>
+      <div class="auth-area">
+        <!-- Not logged in -->
+        <button *ngIf="!isAuthenticated" class="auth0-login-btn" (click)="signIn()">
+          <svg width="20" height="20" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M55.6 44.2L44.4 7.1C42.6 1.5 36.8-1.5 31.2.3L20 4.1 8.8.3C3.2-1.5-2.6 1.5-4.4 7.1L-15.6 44.2c-1.8 5.6 1.2 11.6 6.8 13.4l11.2 3.8 5.6 10.4c2.8 5.2 9.4 7.2 14.6 4.4L32 71.8l9.4 4.4c5.2 2.8 11.8.8 14.6-4.4l5.6-10.4 11.2-3.8c5.6-1.8 8.6-7.8 6.8-13.4z" fill="#EB5424" transform="scale(0.5) translate(32,0)"/>
+          </svg>
+          Sign in with Auth0
+        </button>
+
+        <!-- Logged in -->
+        <div *ngIf="isAuthenticated" class="user-menu">
+          <button class="user-avatar-btn" (click)="toggleDropdown()" [attr.aria-expanded]="userDropdownOpen">
+            <span class="avatar-circle">{{ (userInfo.email || 'U')[0].toUpperCase() }}</span>
+            <span class="user-email">{{ userInfo.email }}</span>
+            <span class="chevron" [class.open]="userDropdownOpen">▾</span>
+          </button>
+
+          <div *ngIf="userDropdownOpen" class="user-dropdown" role="menu">
+            <div class="dropdown-header">
+              <span class="provider-badge">🔐 {{ userInfo.provider }}</span>
+              Authenticated User
+            </div>
+            <div class="dropdown-details">
+              <div class="detail-row">
+                <span class="detail-label">Email</span>
+                <span class="detail-value">{{ userInfo.email }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Username</span>
+                <span class="detail-value username-val">{{ userInfo.username }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">User ID (sub)</span>
+                <span class="detail-value sub-val">{{ userInfo.sub }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Provider</span>
+                <span class="detail-value">{{ userInfo.provider }}</span>
+              </div>
+              <div *ngIf="userInfo.identities" class="detail-row identities-row">
+                <span class="detail-label">Identity Payload</span>
+                <pre class="identity-json">{{ userInfo.identities }}</pre>
+              </div>
+            </div>
+            <button class="sign-out-btn" (click)="handleSignOut()" role="menuitem">Sign Out</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <nav class="tab-bar" role="tablist">
       <button
         role="tab"

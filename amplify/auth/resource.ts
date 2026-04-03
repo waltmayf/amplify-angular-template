@@ -1,4 +1,6 @@
 import { defineAuth, secret } from '@aws-amplify/backend';
+import * as dotenv from 'dotenv';
+dotenv.config({ override: true });
 
 export const auth = defineAuth({
   loginWith: {
@@ -9,12 +11,12 @@ export const auth = defineAuth({
           name: 'Auth0',
           clientId: secret('AUTH0_CLIENT_ID'),
           clientSecret: secret('AUTH0_CLIENT_SECRET'),
-          issuerUrl: 'https://dev-n27lv88dihjzwt0j.us.auth0.com',
+          issuerUrl: process.env['ISSUER_URL'] || '',
           scopes: ['openid', 'profile', 'email'],
         },
       ],
-      callbackUrls: ['http://localhost:4200'],
-      logoutUrls: ['http://localhost:4200'],
+      callbackUrls: [process.env['CALLBACK_URL'] || 'http://localhost:4200'],
+      logoutUrls: [process.env['LOGOUT_URL'] || 'http://localhost:4200'],
     },
   },
 });

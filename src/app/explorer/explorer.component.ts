@@ -1,6 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { generateClient } from 'aws-amplify/data';
+import { getCurrentUser, signInWithRedirect, signOut, fetchUserAttributes, AuthUser } from 'aws-amplify/auth';
+import { Hub } from 'aws-amplify/utils';
 import type { Schema } from '../../../amplify/data/resource';
 
 const client = generateClient<Schema>();
@@ -164,6 +166,17 @@ interface BreadcrumbItem {
   styleUrl: './explorer.component.css',
 })
 export class ExplorerComponent implements OnInit {
+  // Auth state
+  isAuthenticated = false;
+  userDropdownOpen = false;
+  userInfo: {
+    username?: string;
+    email?: string;
+    sub?: string;
+    identities?: string;
+    provider?: string;
+  } = {};
+
   // Hierarchy browser state
   facilities: any[] = [];
   breadcrumb: BreadcrumbItem[] = [];
@@ -182,7 +195,74 @@ export class ExplorerComponent implements OnInit {
   queryTime: number | null = null;
 
   ngOnInit() {
+    this.checkAuth();
+    this.listenForAuth();
     this.loadFacilities();
+  }
+
+  // ─── Auth ───
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.user-menu')) {
+      this.userDropdownOpen = false;
+    }
+  }
+
+  async checkAuth() {
+    try {
+      const user: AuthUser = await getCurrentUser();
+      const attrs = await fetchUserAttributes();
+      this.isAuthenticated = true;
+      // Parse identities to find the provider
+      let provider = 'Cognito';
+      const identitiesRaw = attrs['identities'];
+      if (identitiesRaw) {
+        try {
+          const parsed = JSON.parse(identitiesRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            provider = parsed[0].providerName || 'Auth0';
+          }
+        } catch {}
+      }
+      this.userInfo = {
+        username: user.username,
+        email: attrs['email'] || 'N/A',
+        sub: attrs['sub'],
+        identities: identitiesRaw,
+        provider,
+      };
+    } catch {
+      this.isAuthenticated = false;
+      this.userInfo = {};
+    }
+  }
+
+  listenForAuth() {
+    Hub.listen('auth', ({ payload }) => {
+      if (payload.event === 'signedIn') {
+        this.checkAuth();
+      } else if (payload.event === 'signedOut') {
+        this.isAuthenticated = false;
+        this.userInfo = {};
+      }
+    });
+  }
+
+  signIn() {
+    signInWithRedirect({ provider: { custom: 'Auth0' } });
+  }
+
+  async handleSignOut() {
+    await signOut({ global: true });
+    this.isAuthenticated = false;
+    this.userInfo = {};
+    this.userDropdownOpen = false;
+  }
+
+  toggleDropdown() {
+    this.userDropdownOpen = !this.userDropdownOpen;
   }
 
   // ─── Hierarchy Browser ───
