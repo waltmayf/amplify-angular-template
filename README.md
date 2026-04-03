@@ -1,20 +1,106 @@
-## AWS Amplify Angular.js Starter Template
+# Oil & Gas Maintenance Explorer — AWS Amplify Demo
 
-This repository provides a starter template for creating applications using Angular.js and AWS Amplify, emphasizing easy setup for authentication, API, and database capabilities.
+A demo application showcasing how AWS Amplify Gen 2 can model complex hierarchical data relationships backed by Amazon DynamoDB, and federate authentication with Auth0 via OpenID Connect.
 
-## Overview
+Built with Angular 17, AWS AppSync (GraphQL), and Amplify Gen 2.
 
-This template equips you with a foundational Angular.js application integrated with AWS Amplify, streamlined for scalability and performance. It is ideal for developers looking to jumpstart their project with pre-configured AWS services like Cognito, AppSync, and DynamoDB.
+## What This Demo Shows
 
-## Features
+### Hierarchical Data Modeling with DynamoDB
 
-- **Authentication**: Setup with Amazon Cognito for secure user authentication.
-- **API**: Ready-to-use GraphQL endpoint with AWS AppSync.
-- **Database**: Real-time database powered by Amazon DynamoDB.
+The core of this demo is a deeply nested data model representing an oil & gas maintenance domain:
 
-## Deploying to AWS
+```
+Facility
+  └─ Area (hazard-classified zones)
+       └─ System (process systems with criticality ratings)
+            └─ Equipment (tagged assets with health status)
+                 ├─ Component (sub-parts with condition tracking)
+                 ├─ WorkOrder → MaintenanceTask (sequenced procedures)
+                 └─ InspectionRecord (NDT results, sensor readings)
+  └─ Personnel (certified workers linked to work orders & inspections)
+```
 
-For detailed instructions on deploying your application, refer to the [deployment section](https://docs.amplify.aws/angular/start/quickstart/#deploy-a-fullstack-app-to-aws) of our documentation.
+This 6-level hierarchy uses Amplify's `hasMany` / `belongsTo` relationships to enable graph-style traversal queries — all resolved by AppSync against DynamoDB tables. No relational database required.
+
+For details on how Amplify models these relationships, see the official documentation:
+[Modeling relationships — AWS Amplify Gen 2](https://docs.amplify.aws/angular/build-a-backend/data/data-modeling/relationships/)
+
+### Complex GraphQL Queries
+
+The app includes a query runner with five pre-built queries that demonstrate deep cross-entity joins:
+
+- **Full Hierarchy Traversal** — 6 levels deep in a single query
+- **Critical Equipment with Open Work Orders** — filters degraded equipment and joins personnel, tasks
+- **Inspection Failure Analysis** — cross-references failed inspections with equipment and work orders
+- **Personnel Workload** — shows each worker's assigned work orders and inspection history
+- **Maintenance Task Deep Dive** — traces tasks back up through the full facility hierarchy
+
+### Auth0 Authentication (OIDC Federation)
+
+The app integrates Auth0 as an external OIDC identity provider through Amazon Cognito. After login, a user profile dropdown displays the authenticated user's details including the identity provider payload, proving the Auth0 federation is working.
+
+## Prerequisites
+
+- Node.js v18+
+- An AWS account with credentials configured
+- An Auth0 account with a Regular Web Application configured
+
+## Setup
+
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+2. Create a `.env` file in the project root:
+   ```
+   ISSUER_URL=https://<your-auth0-domain>
+   CALLBACK_URL=http://localhost:4200
+   LOGOUT_URL=http://localhost:4200
+   ```
+
+3. Set Auth0 secrets for the Amplify sandbox:
+   ```bash
+   npx ampx sandbox secret set AUTH0_CLIENT_ID
+   npx ampx sandbox secret set AUTH0_CLIENT_SECRET
+   ```
+
+4. Deploy the sandbox:
+   ```bash
+   npx ampx sandbox
+   ```
+
+5. Add the Cognito callback URL to your Auth0 application's Allowed Callback URLs:
+   ```
+   https://<cognito-domain>/oauth2/idpresponse
+   ```
+   (Find the Cognito domain in `amplify_outputs.json` after deployment.)
+
+6. Load sample data:
+   ```bash
+   pnpm tsx scripts/loadSampleData.ts
+   ```
+
+7. Start the app:
+   ```bash
+   npx ng serve
+   ```
+
+## Project Structure
+
+```
+amplify/
+  auth/resource.ts        # Auth config with Auth0 OIDC federation
+  data/resource.ts        # Hierarchical data schema (8 models)
+  backend.ts              # Backend definition
+scripts/
+  loadSampleData.ts       # Loads 55 sample records across the hierarchy
+  runGraphql.ts           # CLI tool for running ad-hoc GraphQL queries
+  verifyData.ts           # Verification script with deep hierarchy query
+src/app/
+  explorer/               # Main explorer component (hierarchy browser + query runner)
+```
 
 ## Security
 
