@@ -1,0 +1,208 @@
+<div class="explorer-container">
+  <header class="explorer-header">
+    <h1>🛢️ Oil &amp; Gas Maintenance Explorer</h1>
+    <p class="subtitle">Hierarchical data powered by DynamoDB via AWS Amplify GraphQL</p>
+    <nav class="tab-bar" role="tablist">
+      <button
+        role="tab"
+        [attr.aria-selected]="activeTab === 'browser'"
+        [class.active]="activeTab === 'browser'"
+        (click)="activeTab = 'browser'">
+        📂 Hierarchy Browser
+      </button>
+      <button
+        role="tab"
+        [attr.aria-selected]="activeTab === 'queries'"
+        [class.active]="activeTab === 'queries'"
+        (click)="activeTab = 'queries'">
+        ⚡ Complex Queries
+      </button>
+    </nav>
+  </header>
+
+  <!-- ─── TAB 1: Hierarchy Browser ─── -->
+  <section *ngIf="activeTab === 'browser'" class="browser-panel" role="tabpanel">
+    <nav class="breadcrumb" aria-label="Hierarchy breadcrumb">
+      <button class="crumb" (click)="navigateBreadcrumb(-1)">🏠 All Facilities</button>
+      <span *ngFor="let crumb of breadcrumb; let i = index" class="crumb-wrapper">
+        <span class="crumb-sep">›</span>
+        <button class="crumb" (click)="navigateBreadcrumb(i)">
+          {{ getLevelIcon(crumb.level) }} {{ crumb.label }}
+        </button>
+      </span>
+    </nav>
+
+    <div *ngIf="loading" class="loading-indicator">
+      <div class="spinner" role="status" aria-label="Loading"></div>
+      <span>Loading...</span>
+    </div>
+
+    <!-- Item list -->
+    <div *ngIf="!loading && currentItems.length > 0 && !selectedItem" class="item-grid">
+      <div
+        *ngFor="let item of currentItems"
+        class="item-card"
+        tabindex="0"
+        role="button"
+        [attr.aria-label]="'Open ' + (item.name || item.equipmentTag)"
+        (click)="drillInto(item, currentLevel)"
+        (keydown.enter)="drillInto(item, currentLevel)">
+        <div class="card-icon">{{ getLevelIcon(currentLevel) }}</div>
+        <div class="card-body">
+          <h3>{{ item.name || item.equipmentTag }}</h3>
+          <div class="card-meta">
+            <!-- Facility -->
+            <span *ngIf="item.facilityCode" class="meta-tag">{{ item.facilityCode }}</span>
+            <span *ngIf="item.type" class="meta-tag">{{ item.type?.replace('_', ' ') }}</span>
+            <span *ngIf="item.status" class="meta-tag" [ngClass]="getStatusClass(item.status)">{{ item.status }}</span>
+            <!-- Area -->
+            <span *ngIf="item.areaCode" class="meta-tag">{{ item.areaCode }}</span>
+            <span *ngIf="item.hazardClassification" class="meta-tag status-warning">{{ item.hazardClassification?.replace('_', ' ') }}</span>
+            <!-- System -->
+            <span *ngIf="item.systemCode" class="meta-tag">{{ item.systemCode }}</span>
+            <span *ngIf="item.criticality" class="meta-tag" [ngClass]="getStatusClass(item.criticality)">{{ item.criticality }}</span>
+            <span *ngIf="item.processType" class="meta-tag">{{ item.processType?.replace('_', ' ') }}</span>
+            <!-- Equipment -->
+            <span *ngIf="item.equipmentTag" class="meta-tag">{{ item.equipmentTag }}</span>
+            <span *ngIf="item.healthStatus" class="meta-tag" [ngClass]="getStatusClass(item.healthStatus)">{{ item.healthStatus }}</span>
+            <span *ngIf="item.manufacturer" class="meta-tag">{{ item.manufacturer }}</span>
+            <span *ngIf="item.operatingHours" class="meta-tag">{{ item.operatingHours | number }} hrs</span>
+          </div>
+          <p *ngIf="item.description" class="card-desc">{{ item.description }}</p>
+          <p *ngIf="item.location" class="card-desc">📍 {{ item.location }}</p>
+        </div>
+        <div class="card-arrow">›</div>
+      </div>
+    </div>
+
+    <!-- Equipment Detail View -->
+    <div *ngIf="selectedItem" class="detail-view">
+      <div class="detail-header">
+        <h2>🔧 {{ selectedItem.equipmentTag }} — {{ selectedItem.name }}</h2>
+        <span class="meta-tag" [ngClass]="getStatusClass(selectedItem.healthStatus)">{{ selectedItem.healthStatus }}</span>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-section">
+          <h4>Equipment Info</h4>
+          <table class="detail-table" role="table">
+            <tr><td>Manufacturer</td><td>{{ selectedItem.manufacturer }}</td></tr>
+            <tr><td>Model</td><td>{{ selectedItem.model }}</td></tr>
+            <tr><td>Serial Number</td><td>{{ selectedItem.serialNumber }}</td></tr>
+            <tr><td>Type</td><td>{{ selectedItem.equipmentType }}</td></tr>
+            <tr><td>Install Date</td><td>{{ selectedItem.installDate }}</td></tr>
+            <tr><td>Operating Hours</td><td>{{ selectedItem.operatingHours | number }}</td></tr>
+            <tr><td>Last Maintenance</td><td>{{ selectedItem.lastMaintenanceDate }}</td></tr>
+          </table>
+        </div>
+
+        <div class="detail-section">
+          <h4>🔩 Components ({{ selectedItem._components?.length || 0 }})</h4>
+          <div *ngIf="selectedItem._components?.length === 0" class="empty-state">No components recorded</div>
+          <div *ngFor="let comp of selectedItem._components" class="sub-card">
+            <strong>{{ comp.componentTag }}</strong> — {{ comp.name }}
+            <div class="card-meta">
+              <span class="meta-tag" [ngClass]="getStatusClass(comp.condition)">{{ comp.condition }}</span>
+              <span *ngIf="comp.material" class="meta-tag">{{ comp.material }}</span>
+              <span *ngIf="comp.partNumber" class="meta-tag">{{ comp.partNumber }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h4>📋 Work Orders ({{ selectedItem._workOrders?.length || 0 }})</h4>
+          <div *ngIf="selectedItem._workOrders?.length === 0" class="empty-state">No work orders</div>
+          <div *ngFor="let wo of selectedItem._workOrders" class="sub-card">
+            <strong>{{ wo.workOrderNumber }}</strong> — {{ wo.title }}
+            <div class="card-meta">
+              <span class="meta-tag" [ngClass]="getStatusClass(wo.status)">{{ wo.status }}</span>
+              <span class="meta-tag" [ngClass]="getStatusClass(wo.priority)">{{ wo.priority }}</span>
+              <span class="meta-tag">{{ wo.type }}</span>
+              <span *ngIf="wo.estimatedHours" class="meta-tag">Est: {{ wo.estimatedHours }}h</span>
+              <span *ngIf="wo.scheduledStartDate" class="meta-tag">Start: {{ wo.scheduledStartDate }}</span>
+            </div>
+            <p *ngIf="wo.description" class="card-desc">{{ wo.description }}</p>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h4>🔍 Inspection Records ({{ selectedItem._inspections?.length || 0 }})</h4>
+          <div *ngIf="selectedItem._inspections?.length === 0" class="empty-state">No inspections</div>
+          <div *ngFor="let ins of selectedItem._inspections" class="sub-card">
+            <strong>{{ ins.inspectionNumber }}</strong> — {{ ins.inspectionType?.replace('_', ' ') }}
+            <div class="card-meta">
+              <span class="meta-tag" [ngClass]="getStatusClass(ins.result)">{{ ins.result?.replace('_', ' ') }}</span>
+              <span *ngIf="ins.inspectionDate" class="meta-tag">{{ ins.inspectionDate }}</span>
+              <span *ngIf="ins.vibrationLevel" class="meta-tag">Vib: {{ ins.vibrationLevel }} mm/s</span>
+              <span *ngIf="ins.wallThickness" class="meta-tag">Wall: {{ ins.wallThickness }}mm</span>
+              <span *ngIf="ins.temperatureReading" class="meta-tag">Temp: {{ ins.temperatureReading }}°C</span>
+              <span *ngIf="ins.pressureReading" class="meta-tag">Press: {{ ins.pressureReading }} barg</span>
+            </div>
+            <p *ngIf="ins.findings" class="card-desc findings">{{ ins.findings }}</p>
+            <p *ngIf="ins.recommendations" class="card-desc recommendations">💡 {{ ins.recommendations }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="!loading && currentItems.length === 0 && !selectedItem" class="empty-state">
+      No items found at this level.
+    </div>
+  </section>
+
+  <!-- ─── TAB 2: Complex Query Runner ─── -->
+  <section *ngIf="activeTab === 'queries'" class="queries-panel" role="tabpanel">
+    <div class="queries-layout">
+      <aside class="query-list">
+        <h3>Demo Queries</h3>
+        <button
+          *ngFor="let q of demoQueries"
+          class="query-btn"
+          [class.selected]="selectedQuery === q"
+          (click)="selectQuery(q)">
+          <strong>{{ q.name }}</strong>
+          <span>{{ q.description }}</span>
+        </button>
+      </aside>
+
+      <div class="query-main">
+        <div *ngIf="!selectedQuery" class="empty-state query-placeholder">
+          ← Select a query to see the GraphQL and run it against DynamoDB
+        </div>
+
+        <div *ngIf="selectedQuery" class="query-detail">
+          <div class="query-header">
+            <h3>{{ selectedQuery.name }}</h3>
+            <p>{{ selectedQuery.description }}</p>
+          </div>
+
+          <div class="query-source">
+            <div class="source-label">GraphQL Query</div>
+            <pre class="code-block"><code>{{ selectedQuery.query }}</code></pre>
+          </div>
+
+          <button
+            class="run-btn"
+            [disabled]="queryRunning"
+            (click)="runSelectedQuery()">
+            {{ queryRunning ? '⏳ Running...' : '▶ Run Query' }}
+          </button>
+
+          <div *ngIf="queryTime !== null" class="query-timing">
+            Completed in <strong>{{ queryTime }}ms</strong>
+          </div>
+
+          <div *ngIf="queryError" class="query-error">
+            <strong>Error:</strong>
+            <pre>{{ queryError }}</pre>
+          </div>
+
+          <div *ngIf="queryResult" class="query-result">
+            <div class="source-label">Response (JSON)</div>
+            <pre class="code-block result-block"><code>{{ formatJson(queryResult) }}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
