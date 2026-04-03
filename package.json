@@ -20,6 +20,7 @@
     "@angular/router": "^17.3.0",
     "@aws-sdk/client-sts": "^3.1023.0",
     "aws-amplify": "^6.6.6",
+    "dotenv": "^17.4.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.3"
