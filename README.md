@@ -87,6 +87,60 @@ The app integrates Auth0 as an external OIDC identity provider through Amazon Co
    npx ng serve
    ```
 
+## Production Deployment (Amplify Hosting CI/CD)
+
+Amplify Hosting deploys automatically when you push to a linked Git branch. There is a chicken-and-egg situation with the first deployment since you need the Amplify app domain for the callback URLs, but you don't have it until the app is created.
+
+### Step 1: Initial Push (will fail — that's expected)
+
+Push your code to the linked branch. The first deployment will fail on the auth stack because the environment variables aren't set yet. The data stack (AppSync, DynamoDB) may partially deploy.
+
+### Step 2: Set Secrets
+
+In the Amplify Console, go to **Hosting > Secrets** and add:
+
+| Secret | Value |
+|--------|-------|
+| `AUTH0_CLIENT_ID` | Your Auth0 application Client ID |
+| `AUTH0_CLIENT_SECRET` | Your Auth0 application Client Secret |
+
+Note: Sandbox secrets (`npx ampx sandbox secret set`) and branch deployment secrets are stored separately. You need to set them in both places, even if the values are identical.
+
+### Step 3: Set Environment Variables
+
+In the Amplify Console, go to **Hosting > Environment variables** and add:
+
+| Variable | Value |
+|----------|-------|
+| `ISSUER_URL` | `https://<your-auth0-domain>` |
+| `CALLBACK_URL` | `https://<branch>.<app-id>.amplifyapp.com` |
+| `LOGOUT_URL` | `https://<branch>.<app-id>.amplifyapp.com` |
+
+Get the app domain from the Amplify Console overview page (e.g., `https://main.d1a2b3c4d5e6f7.amplifyapp.com`).
+
+### Step 4: Redeploy
+
+Trigger a redeploy from the Amplify Console (or push a new commit). This deployment should succeed.
+
+### Step 5: Configure Auth0 for Production
+
+After the deployment succeeds:
+
+1. Download `amplify_outputs.json` from the Amplify Console (Deployments tab) to find the production Cognito domain
+2. In your Auth0 application settings, add to **Allowed Callback URLs**:
+   - `https://<production-cognito-domain>/oauth2/idpresponse`
+   - `https://<branch>.<app-id>.amplifyapp.com`
+3. Add to **Allowed Logout URLs**:
+   - `https://<branch>.<app-id>.amplifyapp.com`
+
+### Step 6: Load Sample Data
+
+Point the data loader at the production endpoint by copying the deployed `amplify_outputs.json` locally, then run:
+
+```bash
+pnpm tsx scripts/loadSampleData.ts
+```
+
 ## Project Structure
 
 ```
