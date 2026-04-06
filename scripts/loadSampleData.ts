@@ -31,9 +31,35 @@ async function gql(client: any, query: string, variables: Record<string, any> = 
     console.error('GraphQL errors:', JSON.stringify(result.errors, null, 2));
     throw new Error(result.errors[0].message);
   }
-  // Return the first data key's value
   const keys = Object.keys(result.data);
   return result.data[keys[0]];
+}
+
+/**
+ * Find an existing record by a unique field, or create it.
+ * Returns the existing or newly created record.
+ */
+async function findOrCreate(
+  client: any,
+  listQuery: string,
+  filterField: string,
+  filterValue: string,
+  createMutation: string,
+  input: Record<string, any>,
+) {
+  // Search for existing record
+  const searchResult = await client.graphql({
+    query: listQuery,
+    variables: { filter: { [filterField]: { eq: filterValue } } },
+  });
+  const listKey = Object.keys(searchResult.data)[0];
+  const existing = searchResult.data[listKey]?.items;
+  if (existing && existing.length > 0) {
+    return { ...existing[0], _existed: true };
+  }
+  // Create new
+  const created = await gql(client, createMutation, { input });
+  return { ...created, _existed: false };
 }
 
 // ─── Mutation helpers ───
@@ -41,399 +67,214 @@ async function gql(client: any, query: string, variables: Record<string, any> = 
 const createFacility = `mutation Create($input: CreateFacilityInput!) {
   createFacility(input: $input) { id name }
 }`;
+const listFacilities = `query List($filter: ModelFacilityFilterInput) {
+  listFacilities(filter: $filter) { items { id name facilityCode } }
+}`;
 
 const createArea = `mutation Create($input: CreateAreaInput!) {
   createArea(input: $input) { id name }
+}`;
+const listAreas = `query List($filter: ModelAreaFilterInput) {
+  listAreas(filter: $filter) { items { id name areaCode } }
 }`;
 
 const createSystem = `mutation Create($input: CreateSystemInput!) {
   createSystem(input: $input) { id name }
 }`;
+const listSystems = `query List($filter: ModelSystemFilterInput) {
+  listSystems(filter: $filter) { items { id name systemCode } }
+}`;
 
 const createEquipment = `mutation Create($input: CreateEquipmentInput!) {
   createEquipment(input: $input) { id equipmentTag name }
+}`;
+const listEquipment = `query List($filter: ModelEquipmentFilterInput) {
+  listEquipment(filter: $filter) { items { id equipmentTag name } }
 }`;
 
 const createComponent = `mutation Create($input: CreateComponentInput!) {
   createComponent(input: $input) { id componentTag name }
 }`;
+const listComponents = `query List($filter: ModelComponentFilterInput) {
+  listComponents(filter: $filter) { items { id componentTag name } }
+}`;
 
 const createPersonnel = `mutation Create($input: CreatePersonnelInput!) {
   createPersonnel(input: $input) { id employeeId name }
+}`;
+const listPersonnel = `query List($filter: ModelPersonnelFilterInput) {
+  listPersonnel(filter: $filter) { items { id employeeId name } }
 }`;
 
 const createWorkOrder = `mutation Create($input: CreateWorkOrderInput!) {
   createWorkOrder(input: $input) { id workOrderNumber }
 }`;
+const listWorkOrders = `query List($filter: ModelWorkOrderFilterInput) {
+  listWorkOrders(filter: $filter) { items { id workOrderNumber } }
+}`;
 
 const createMaintenanceTask = `mutation Create($input: CreateMaintenanceTaskInput!) {
   createMaintenanceTask(input: $input) { id taskNumber }
+}`;
+const listMaintenanceTasks = `query List($filter: ModelMaintenanceTaskFilterInput) {
+  listMaintenanceTasks(filter: $filter) { items { id taskNumber } }
 }`;
 
 const createInspectionRecord = `mutation Create($input: CreateInspectionRecordInput!) {
   createInspectionRecord(input: $input) { id inspectionNumber }
 }`;
+const listInspectionRecords = `query List($filter: ModelInspectionRecordFilterInput) {
+  listInspectionRecords(filter: $filter) { items { id inspectionNumber } }
+}`;
 
 // ─── Sample Data ───
 
 async function loadData(client: any) {
+  const icon = (r: any) => r._existed ? '♻️' : '✅';
+
   log('\n🏭 Creating Facilities...', colors.cyan);
 
-  const facility1 = await gql(client, createFacility, {
-    input: {
-      name: 'Thunder Bay Refinery',
-      facilityCode: 'TBR-001',
-      type: 'REFINERY',
-      location: 'Thunder Bay, Alberta, Canada',
-      latitude: 56.234,
-      longitude: -120.849,
-      operatingCompany: 'Northern Petroleum Corp',
-      commissionDate: '1998-06-15',
-      status: 'OPERATIONAL',
-    },
-  });
-  log(`  ✅ ${facility1.name} (${facility1.id})`, colors.green);
+  const fac1Input = { name: 'Thunder Bay Refinery', facilityCode: 'TBR-001', type: 'REFINERY', location: 'Thunder Bay, Alberta, Canada', latitude: 56.234, longitude: -120.849, operatingCompany: 'Northern Petroleum Corp', commissionDate: '1998-06-15', status: 'OPERATIONAL' };
+  const facility1 = await findOrCreate(client, listFacilities, 'facilityCode', 'TBR-001', createFacility, fac1Input);
+  log(`  ${icon(facility1)} ${facility1.name}`, colors.green);
 
-  const facility2 = await gql(client, createFacility, {
-    input: {
-      name: 'Deepwater Horizon Alpha',
-      facilityCode: 'DHA-002',
-      type: 'OFFSHORE_PLATFORM',
-      location: 'Gulf of Mexico, Block 252',
-      latitude: 28.738,
-      longitude: -88.366,
-      operatingCompany: 'Northern Petroleum Corp',
-      commissionDate: '2012-03-22',
-      status: 'OPERATIONAL',
-    },
-  });
-  log(`  ✅ ${facility2.name} (${facility2.id})`, colors.green);
+  const fac2Input = { name: 'Deepwater Horizon Alpha', facilityCode: 'DHA-002', type: 'OFFSHORE_PLATFORM', location: 'Gulf of Mexico, Block 252', latitude: 28.738, longitude: -88.366, operatingCompany: 'Northern Petroleum Corp', commissionDate: '2012-03-22', status: 'OPERATIONAL' };
+  const facility2 = await findOrCreate(client, listFacilities, 'facilityCode', 'DHA-002', createFacility, fac2Input);
+  log(`  ${icon(facility2)} ${facility2.name}`, colors.green);
 
   // ─── Personnel ───
   log('\n👷 Creating Personnel...', colors.cyan);
 
-  const personnel = await Promise.all([
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-1001', name: 'Carlos Mendez', role: 'SUPERVISOR', specialization: 'Rotating Equipment', certifications: 'API 510, API 570, CMRP', contactEmail: 'cmendez@example.com', isActive: true, facilityId: facility1.id },
-    }),
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-1002', name: 'Sarah Chen', role: 'ENGINEER', specialization: 'Process Engineering', certifications: 'PE, Six Sigma Black Belt', contactEmail: 'schen@example.com', isActive: true, facilityId: facility1.id },
-    }),
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-1003', name: 'James Okafor', role: 'INSPECTOR', specialization: 'NDT Level III', certifications: 'ASNT Level III UT/RT/MT', contactEmail: 'jokafor@example.com', isActive: true, facilityId: facility1.id },
-    }),
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-1004', name: 'Maria Santos', role: 'TECHNICIAN', specialization: 'Instrumentation & Controls', certifications: 'ISA CCST Level III', contactEmail: 'msantos@example.com', isActive: true, facilityId: facility1.id },
-    }),
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-2001', name: 'Erik Johansson', role: 'SAFETY_OFFICER', specialization: 'Offshore Safety', certifications: 'NEBOSH, BOSIET', contactEmail: 'ejohansson@example.com', isActive: true, facilityId: facility2.id },
-    }),
-    gql(client, createPersonnel, {
-      input: { employeeId: 'EMP-2002', name: 'Aisha Patel', role: 'PLANNER', specialization: 'Maintenance Planning', certifications: 'CMRP, PMP', contactEmail: 'apatel@example.com', isActive: true, facilityId: facility2.id },
-    }),
-  ]);
-  personnel.forEach((p) => log(`  ✅ ${p.name} (${p.employeeId})`, colors.green));
+  const personnelData = [
+    { employeeId: 'EMP-1001', name: 'Carlos Mendez', role: 'SUPERVISOR', specialization: 'Rotating Equipment', certifications: 'API 510, API 570, CMRP', contactEmail: 'cmendez@example.com', isActive: true, facilityId: facility1.id },
+    { employeeId: 'EMP-1002', name: 'Sarah Chen', role: 'ENGINEER', specialization: 'Process Engineering', certifications: 'PE, Six Sigma Black Belt', contactEmail: 'schen@example.com', isActive: true, facilityId: facility1.id },
+    { employeeId: 'EMP-1003', name: 'James Okafor', role: 'INSPECTOR', specialization: 'NDT Level III', certifications: 'ASNT Level III UT/RT/MT', contactEmail: 'jokafor@example.com', isActive: true, facilityId: facility1.id },
+    { employeeId: 'EMP-1004', name: 'Maria Santos', role: 'TECHNICIAN', specialization: 'Instrumentation & Controls', certifications: 'ISA CCST Level III', contactEmail: 'msantos@example.com', isActive: true, facilityId: facility1.id },
+    { employeeId: 'EMP-2001', name: 'Erik Johansson', role: 'SAFETY_OFFICER', specialization: 'Offshore Safety', certifications: 'NEBOSH, BOSIET', contactEmail: 'ejohansson@example.com', isActive: true, facilityId: facility2.id },
+    { employeeId: 'EMP-2002', name: 'Aisha Patel', role: 'PLANNER', specialization: 'Maintenance Planning', certifications: 'CMRP, PMP', contactEmail: 'apatel@example.com', isActive: true, facilityId: facility2.id },
+  ];
+  const personnel: any[] = [];
+  for (const p of personnelData) {
+    const result = await findOrCreate(client, listPersonnel, 'employeeId', p.employeeId, createPersonnel, p);
+    personnel.push(result);
+    log(`  ${icon(result)} ${result.name} (${result.employeeId})`, colors.green);
+  }
 
   // ─── Areas for Thunder Bay Refinery ───
   log('\n📍 Creating Areas...', colors.cyan);
 
-  const areaCDU = await gql(client, createArea, {
-    input: { name: 'Crude Distillation Unit', areaCode: 'TBR-CDU', description: 'Primary crude oil distillation and fractionation', hazardClassification: 'ZONE_1', facilityId: facility1.id },
-  });
-  const areaUtil = await gql(client, createArea, {
-    input: { name: 'Utilities & Offsites', areaCode: 'TBR-UTL', description: 'Steam generation, cooling water, and power distribution', hazardClassification: 'ZONE_2', facilityId: facility1.id },
-  });
-  const areaFCC = await gql(client, createArea, {
-    input: { name: 'Fluid Catalytic Cracker', areaCode: 'TBR-FCC', description: 'Catalytic cracking of heavy gas oils', hazardClassification: 'ZONE_1', facilityId: facility1.id },
-  });
-
-  // Areas for Offshore Platform
-  const areaWellhead = await gql(client, createArea, {
-    input: { name: 'Wellhead Platform', areaCode: 'DHA-WHP', description: 'Subsea wellhead control and production manifold', hazardClassification: 'ZONE_0', facilityId: facility2.id },
-  });
-  const areaProcess = await gql(client, createArea, {
-    input: { name: 'Process Module', areaCode: 'DHA-PRC', description: 'Separation, compression, and metering', hazardClassification: 'ZONE_1', facilityId: facility2.id },
-  });
+  const areaCDU = await findOrCreate(client, listAreas, 'areaCode', 'TBR-CDU', createArea, { name: 'Crude Distillation Unit', areaCode: 'TBR-CDU', description: 'Primary crude oil distillation and fractionation', hazardClassification: 'ZONE_1', facilityId: facility1.id });
+  const areaUtil = await findOrCreate(client, listAreas, 'areaCode', 'TBR-UTL', createArea, { name: 'Utilities & Offsites', areaCode: 'TBR-UTL', description: 'Steam generation, cooling water, and power distribution', hazardClassification: 'ZONE_2', facilityId: facility1.id });
+  const areaFCC = await findOrCreate(client, listAreas, 'areaCode', 'TBR-FCC', createArea, { name: 'Fluid Catalytic Cracker', areaCode: 'TBR-FCC', description: 'Catalytic cracking of heavy gas oils', hazardClassification: 'ZONE_1', facilityId: facility1.id });
+  const areaWellhead = await findOrCreate(client, listAreas, 'areaCode', 'DHA-WHP', createArea, { name: 'Wellhead Platform', areaCode: 'DHA-WHP', description: 'Subsea wellhead control and production manifold', hazardClassification: 'ZONE_0', facilityId: facility2.id });
+  const areaProcess = await findOrCreate(client, listAreas, 'areaCode', 'DHA-PRC', createArea, { name: 'Process Module', areaCode: 'DHA-PRC', description: 'Separation, compression, and metering', hazardClassification: 'ZONE_1', facilityId: facility2.id });
 
   [areaCDU, areaUtil, areaFCC, areaWellhead, areaProcess].forEach((a) =>
-    log(`  ✅ ${a.name}`, colors.green)
+    log(`  ${icon(a)} ${a.name}`, colors.green)
   );
 
   // ─── Systems ───
   log('\n⚙️  Creating Systems...', colors.cyan);
 
-  const sysPreheat = await gql(client, createSystem, {
-    input: { name: 'Crude Preheat Train', systemCode: 'CDU-PHT-100', description: 'Heat exchangers for crude oil preheating before distillation column', criticality: 'CRITICAL', processType: 'HEAT_EXCHANGE', areaId: areaCDU.id },
-  });
-  const sysPumping = await gql(client, createSystem, {
-    input: { name: 'Crude Charge Pumping', systemCode: 'CDU-PMP-200', description: 'Main crude charge pumps feeding the distillation column', criticality: 'CRITICAL', processType: 'PUMPING', areaId: areaCDU.id },
-  });
-  const sysCooling = await gql(client, createSystem, {
-    input: { name: 'Cooling Water System', systemCode: 'UTL-CW-300', description: 'Closed-loop cooling water for process heat exchangers', criticality: 'HIGH', processType: 'UTILITY', areaId: areaUtil.id },
-  });
-  const sysFlare = await gql(client, createSystem, {
-    input: { name: 'Flare System', systemCode: 'UTL-FLR-400', description: 'Emergency pressure relief and flare stack', criticality: 'CRITICAL', processType: 'FLARE', areaId: areaUtil.id },
-  });
-  const sysSeparation = await gql(client, createSystem, {
-    input: { name: 'Production Separation', systemCode: 'PRC-SEP-100', description: 'Three-phase separator for oil/gas/water separation', criticality: 'CRITICAL', processType: 'SEPARATION', areaId: areaProcess.id },
-  });
-  const sysCompression = await gql(client, createSystem, {
-    input: { name: 'Gas Compression', systemCode: 'PRC-CMP-200', description: 'Export gas compression for pipeline delivery', criticality: 'HIGH', processType: 'COMPRESSION', areaId: areaProcess.id },
-  });
+  const sysPreheat = await findOrCreate(client, listSystems, 'systemCode', 'CDU-PHT-100', createSystem, { name: 'Crude Preheat Train', systemCode: 'CDU-PHT-100', description: 'Heat exchangers for crude oil preheating before distillation column', criticality: 'CRITICAL', processType: 'HEAT_EXCHANGE', areaId: areaCDU.id });
+  const sysPumping = await findOrCreate(client, listSystems, 'systemCode', 'CDU-PMP-200', createSystem, { name: 'Crude Charge Pumping', systemCode: 'CDU-PMP-200', description: 'Main crude charge pumps feeding the distillation column', criticality: 'CRITICAL', processType: 'PUMPING', areaId: areaCDU.id });
+  const sysCooling = await findOrCreate(client, listSystems, 'systemCode', 'UTL-CW-300', createSystem, { name: 'Cooling Water System', systemCode: 'UTL-CW-300', description: 'Closed-loop cooling water for process heat exchangers', criticality: 'HIGH', processType: 'UTILITY', areaId: areaUtil.id });
+  const sysFlare = await findOrCreate(client, listSystems, 'systemCode', 'UTL-FLR-400', createSystem, { name: 'Flare System', systemCode: 'UTL-FLR-400', description: 'Emergency pressure relief and flare stack', criticality: 'CRITICAL', processType: 'FLARE', areaId: areaUtil.id });
+  const sysSeparation = await findOrCreate(client, listSystems, 'systemCode', 'PRC-SEP-100', createSystem, { name: 'Production Separation', systemCode: 'PRC-SEP-100', description: 'Three-phase separator for oil/gas/water separation', criticality: 'CRITICAL', processType: 'SEPARATION', areaId: areaProcess.id });
+  const sysCompression = await findOrCreate(client, listSystems, 'systemCode', 'PRC-CMP-200', createSystem, { name: 'Gas Compression', systemCode: 'PRC-CMP-200', description: 'Export gas compression for pipeline delivery', criticality: 'HIGH', processType: 'COMPRESSION', areaId: areaProcess.id });
 
   [sysPreheat, sysPumping, sysCooling, sysFlare, sysSeparation, sysCompression].forEach((s) =>
-    log(`  ✅ ${s.name} (${s.id})`, colors.green)
+    log(`  ${icon(s)} ${s.name}`, colors.green)
   );
 
   // ─── Equipment ───
   log('\n🔧 Creating Equipment...', colors.cyan);
 
-  const pumpP101 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'P-101A', name: 'Crude Charge Pump A', description: 'Centrifugal crude charge pump, primary', manufacturer: 'Sulzer', model: 'MSD-D 8x10x14', serialNumber: 'SLZ-2019-44821', installDate: '2019-04-10', equipmentType: 'PUMP', healthStatus: 'DEGRADED', operatingHours: 42350, lastMaintenanceDate: '2025-11-15', systemId: sysPumping.id },
-  });
-  const pumpP101B = await gql(client, createEquipment, {
-    input: { equipmentTag: 'P-101B', name: 'Crude Charge Pump B', description: 'Centrifugal crude charge pump, standby', manufacturer: 'Sulzer', model: 'MSD-D 8x10x14', serialNumber: 'SLZ-2019-44822', installDate: '2019-04-10', equipmentType: 'PUMP', healthStatus: 'HEALTHY', operatingHours: 18200, lastMaintenanceDate: '2026-01-20', systemId: sysPumping.id },
-  });
-  const hxE101 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'E-101', name: 'Crude/Residue Exchanger', description: 'Shell & tube heat exchanger, crude preheat stage 1', manufacturer: 'Alfa Laval', model: 'Compabloc CB76', serialNumber: 'AL-2018-99102', installDate: '2018-09-01', equipmentType: 'HEAT_EXCHANGER', healthStatus: 'HEALTHY', operatingHours: 52000, lastMaintenanceDate: '2025-09-30', systemId: sysPreheat.id },
-  });
-  const hxE102 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'E-102', name: 'Crude/Heavy Naphtha Exchanger', description: 'Shell & tube heat exchanger, crude preheat stage 2', manufacturer: 'Alfa Laval', model: 'Compabloc CB76', serialNumber: 'AL-2018-99103', installDate: '2018-09-01', equipmentType: 'HEAT_EXCHANGER', healthStatus: 'CRITICAL', operatingHours: 52000, lastMaintenanceDate: '2025-06-15', systemId: sysPreheat.id },
-  });
-  const compC201 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'C-201', name: 'Export Gas Compressor', description: 'Centrifugal gas compressor, 3-stage', manufacturer: 'Atlas Copco', model: 'GT-110', serialNumber: 'AC-2012-33100', installDate: '2012-03-22', equipmentType: 'COMPRESSOR', healthStatus: 'DEGRADED', operatingHours: 98500, lastMaintenanceDate: '2025-12-01', systemId: sysCompression.id },
-  });
-  const vesselV301 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'V-301', name: 'Three-Phase Separator', description: 'Horizontal three-phase production separator', manufacturer: 'Exterran', model: 'HPS-3600', serialNumber: 'EXT-2012-10050', installDate: '2012-03-22', equipmentType: 'VESSEL', healthStatus: 'HEALTHY', operatingHours: 105000, lastMaintenanceDate: '2026-02-10', systemId: sysSeparation.id },
-  });
-  const valvePSV401 = await gql(client, createEquipment, {
-    input: { equipmentTag: 'PSV-401', name: 'Flare Header Relief Valve', description: 'Pressure safety valve on main flare header', manufacturer: 'Emerson', model: 'Crosby J-Series', serialNumber: 'EMR-2020-77001', installDate: '2020-08-15', equipmentType: 'VALVE', healthStatus: 'HEALTHY', operatingHours: 35000, lastMaintenanceDate: '2026-01-05', systemId: sysFlare.id },
-  });
+  const pumpP101 = await findOrCreate(client, listEquipment, 'equipmentTag', 'P-101A', createEquipment, { equipmentTag: 'P-101A', name: 'Crude Charge Pump A', description: 'Centrifugal crude charge pump, primary', manufacturer: 'Sulzer', model: 'MSD-D 8x10x14', serialNumber: 'SLZ-2019-44821', installDate: '2019-04-10', equipmentType: 'PUMP', healthStatus: 'DEGRADED', operatingHours: 42350, lastMaintenanceDate: '2025-11-15', systemId: sysPumping.id });
+  const pumpP101B = await findOrCreate(client, listEquipment, 'equipmentTag', 'P-101B', createEquipment, { equipmentTag: 'P-101B', name: 'Crude Charge Pump B', description: 'Centrifugal crude charge pump, standby', manufacturer: 'Sulzer', model: 'MSD-D 8x10x14', serialNumber: 'SLZ-2019-44822', installDate: '2019-04-10', equipmentType: 'PUMP', healthStatus: 'HEALTHY', operatingHours: 18200, lastMaintenanceDate: '2026-01-20', systemId: sysPumping.id });
+  const hxE101 = await findOrCreate(client, listEquipment, 'equipmentTag', 'E-101', createEquipment, { equipmentTag: 'E-101', name: 'Crude/Residue Exchanger', description: 'Shell & tube heat exchanger, crude preheat stage 1', manufacturer: 'Alfa Laval', model: 'Compabloc CB76', serialNumber: 'AL-2018-99102', installDate: '2018-09-01', equipmentType: 'HEAT_EXCHANGER', healthStatus: 'HEALTHY', operatingHours: 52000, lastMaintenanceDate: '2025-09-30', systemId: sysPreheat.id });
+  const hxE102 = await findOrCreate(client, listEquipment, 'equipmentTag', 'E-102', createEquipment, { equipmentTag: 'E-102', name: 'Crude/Heavy Naphtha Exchanger', description: 'Shell & tube heat exchanger, crude preheat stage 2', manufacturer: 'Alfa Laval', model: 'Compabloc CB76', serialNumber: 'AL-2018-99103', installDate: '2018-09-01', equipmentType: 'HEAT_EXCHANGER', healthStatus: 'CRITICAL', operatingHours: 52000, lastMaintenanceDate: '2025-06-15', systemId: sysPreheat.id });
+  const compC201 = await findOrCreate(client, listEquipment, 'equipmentTag', 'C-201', createEquipment, { equipmentTag: 'C-201', name: 'Export Gas Compressor', description: 'Centrifugal gas compressor, 3-stage', manufacturer: 'Atlas Copco', model: 'GT-110', serialNumber: 'AC-2012-33100', installDate: '2012-03-22', equipmentType: 'COMPRESSOR', healthStatus: 'DEGRADED', operatingHours: 98500, lastMaintenanceDate: '2025-12-01', systemId: sysCompression.id });
+  const vesselV301 = await findOrCreate(client, listEquipment, 'equipmentTag', 'V-301', createEquipment, { equipmentTag: 'V-301', name: 'Three-Phase Separator', description: 'Horizontal three-phase production separator', manufacturer: 'Exterran', model: 'HPS-3600', serialNumber: 'EXT-2012-10050', installDate: '2012-03-22', equipmentType: 'VESSEL', healthStatus: 'HEALTHY', operatingHours: 105000, lastMaintenanceDate: '2026-02-10', systemId: sysSeparation.id });
+  const valvePSV401 = await findOrCreate(client, listEquipment, 'equipmentTag', 'PSV-401', createEquipment, { equipmentTag: 'PSV-401', name: 'Flare Header Relief Valve', description: 'Pressure safety valve on main flare header', manufacturer: 'Emerson', model: 'Crosby J-Series', serialNumber: 'EMR-2020-77001', installDate: '2020-08-15', equipmentType: 'VALVE', healthStatus: 'HEALTHY', operatingHours: 35000, lastMaintenanceDate: '2026-01-05', systemId: sysFlare.id });
 
   [pumpP101, pumpP101B, hxE101, hxE102, compC201, vesselV301, valvePSV401].forEach((e) =>
-    log(`  ✅ ${e.equipmentTag} - ${e.name}`, colors.green)
+    log(`  ${icon(e)} ${e.equipmentTag} - ${e.name}`, colors.green)
   );
 
   // ─── Components (sub-parts of equipment) ───
   log('\n🔩 Creating Components...', colors.cyan);
 
-  const components = await Promise.all([
-    // Pump P-101A components
-    gql(client, createComponent, { input: { name: 'Impeller', componentTag: 'P-101A-IMP', partNumber: 'SLZ-IMP-8x10', material: 'Duplex Stainless Steel 2205', condition: 'FAIR', installDate: '2023-06-01', expectedLifeYears: 4, equipmentId: pumpP101.id } }),
-    gql(client, createComponent, { input: { name: 'Mechanical Seal', componentTag: 'P-101A-SEAL', partNumber: 'SLZ-SEAL-4500', material: 'Silicon Carbide / Carbon', condition: 'POOR', installDate: '2025-11-15', expectedLifeYears: 2, equipmentId: pumpP101.id } }),
-    gql(client, createComponent, { input: { name: 'Radial Bearing DE', componentTag: 'P-101A-BRG-DE', partNumber: 'SKF-7316-BECBM', material: 'Chrome Steel', condition: 'FAIR', installDate: '2023-06-01', expectedLifeYears: 3, equipmentId: pumpP101.id } }),
-    gql(client, createComponent, { input: { name: 'Coupling', componentTag: 'P-101A-CPL', partNumber: 'REXNORD-OMEGA-E50', material: 'Steel / Elastomer', condition: 'GOOD', installDate: '2023-06-01', expectedLifeYears: 5, equipmentId: pumpP101.id } }),
-    // Heat Exchanger E-102 components
-    gql(client, createComponent, { input: { name: 'Tube Bundle', componentTag: 'E-102-TUBES', partNumber: 'AL-TB-CB76-SS316', material: 'SS 316L', condition: 'POOR', installDate: '2018-09-01', expectedLifeYears: 8, equipmentId: hxE102.id } }),
-    gql(client, createComponent, { input: { name: 'Gasket Set', componentTag: 'E-102-GSKT', partNumber: 'AL-GSKT-CB76-SPW', material: 'Spiral Wound SS/Graphite', condition: 'FAIR', installDate: '2025-06-15', expectedLifeYears: 3, equipmentId: hxE102.id } }),
-    // Compressor C-201 components
-    gql(client, createComponent, { input: { name: '1st Stage Impeller', componentTag: 'C-201-IMP1', partNumber: 'AC-IMP-GT110-S1', material: 'Inconel 718', condition: 'GOOD', installDate: '2024-01-15', expectedLifeYears: 5, equipmentId: compC201.id } }),
-    gql(client, createComponent, { input: { name: 'Thrust Bearing', componentTag: 'C-201-BRG-THR', partNumber: 'KINGSBURY-LEG-6', material: 'Babbitt / Steel', condition: 'FAIR', installDate: '2024-01-15', expectedLifeYears: 4, equipmentId: compC201.id } }),
-    gql(client, createComponent, { input: { name: 'Dry Gas Seal', componentTag: 'C-201-DGS', partNumber: 'JOHN-CRANE-2800', material: 'Tungsten Carbide', condition: 'GOOD', installDate: '2025-12-01', expectedLifeYears: 3, equipmentId: compC201.id } }),
-  ]);
-  components.forEach((c) => log(`  ✅ ${c.componentTag} - ${c.name}`, colors.green));
+  const componentData = [
+    { name: 'Impeller', componentTag: 'P-101A-IMP', partNumber: 'SLZ-IMP-8x10', material: 'Duplex Stainless Steel 2205', condition: 'FAIR', installDate: '2023-06-01', expectedLifeYears: 4, equipmentId: pumpP101.id },
+    { name: 'Mechanical Seal', componentTag: 'P-101A-SEAL', partNumber: 'SLZ-SEAL-4500', material: 'Silicon Carbide / Carbon', condition: 'POOR', installDate: '2025-11-15', expectedLifeYears: 2, equipmentId: pumpP101.id },
+    { name: 'Radial Bearing DE', componentTag: 'P-101A-BRG-DE', partNumber: 'SKF-7316-BECBM', material: 'Chrome Steel', condition: 'FAIR', installDate: '2023-06-01', expectedLifeYears: 3, equipmentId: pumpP101.id },
+    { name: 'Coupling', componentTag: 'P-101A-CPL', partNumber: 'REXNORD-OMEGA-E50', material: 'Steel / Elastomer', condition: 'GOOD', installDate: '2023-06-01', expectedLifeYears: 5, equipmentId: pumpP101.id },
+    { name: 'Tube Bundle', componentTag: 'E-102-TUBES', partNumber: 'AL-TB-CB76-SS316', material: 'SS 316L', condition: 'POOR', installDate: '2018-09-01', expectedLifeYears: 8, equipmentId: hxE102.id },
+    { name: 'Gasket Set', componentTag: 'E-102-GSKT', partNumber: 'AL-GSKT-CB76-SPW', material: 'Spiral Wound SS/Graphite', condition: 'FAIR', installDate: '2025-06-15', expectedLifeYears: 3, equipmentId: hxE102.id },
+    { name: '1st Stage Impeller', componentTag: 'C-201-IMP1', partNumber: 'AC-IMP-GT110-S1', material: 'Inconel 718', condition: 'GOOD', installDate: '2024-01-15', expectedLifeYears: 5, equipmentId: compC201.id },
+    { name: 'Thrust Bearing', componentTag: 'C-201-BRG-THR', partNumber: 'KINGSBURY-LEG-6', material: 'Babbitt / Steel', condition: 'FAIR', installDate: '2024-01-15', expectedLifeYears: 4, equipmentId: compC201.id },
+    { name: 'Dry Gas Seal', componentTag: 'C-201-DGS', partNumber: 'JOHN-CRANE-2800', material: 'Tungsten Carbide', condition: 'GOOD', installDate: '2025-12-01', expectedLifeYears: 3, equipmentId: compC201.id },
+  ];
+  const components: any[] = [];
+  for (const c of componentData) {
+    const result = await findOrCreate(client, listComponents, 'componentTag', c.componentTag, createComponent, c);
+    components.push(result);
+    log(`  ${icon(result)} ${result.componentTag} - ${result.name}`, colors.green);
+  }
 
   // ─── Work Orders ───
   log('\n📋 Creating Work Orders...', colors.cyan);
 
-  const wo1 = await gql(client, createWorkOrder, {
-    input: {
-      workOrderNumber: 'WO-2026-0042',
-      title: 'P-101A Mechanical Seal Replacement',
-      description: 'Elevated vibration and seal leakage detected on crude charge pump P-101A. Replace mechanical seal and inspect impeller wear.',
-      priority: 'URGENT',
-      status: 'SCHEDULED',
-      type: 'CORRECTIVE',
-      estimatedHours: 16,
-      estimatedCost: 45000,
-      internalNotes: '⚠️ CONFIDENTIAL: Vendor quote from Sulzer is $38K for seal kit. Additional $7K budgeted for potential impeller replacement if wear exceeds 15% of original diameter.',
-      costBreakdown: 'Seal kit: $28,000 | Labor (2 techs × 16h): $9,600 | Crane rental: $4,200 | Contingency: $3,200',
-      scheduledStartDate: '2026-04-07',
-      scheduledEndDate: '2026-04-08',
-      equipmentId: pumpP101.id,
-      assignedToId: personnel[0].id, // Carlos Mendez
-    },
-  });
-
-  const wo2 = await gql(client, createWorkOrder, {
-    input: {
-      workOrderNumber: 'WO-2026-0043',
-      title: 'E-102 Tube Bundle Inspection & Cleaning',
-      description: 'Scheduled inspection of crude/heavy naphtha exchanger. Fouling suspected based on declining heat transfer coefficient.',
-      priority: 'HIGH',
-      status: 'PLANNED',
-      type: 'PREVENTIVE',
-      estimatedHours: 24,
-      estimatedCost: 28000,
-      internalNotes: '⚠️ CONFIDENTIAL: Alfa Laval recommends full bundle replacement rather than cleaning. Procurement lead time is 8 weeks. Consider temporary bypass if fouling worsens before scheduled date.',
-      costBreakdown: 'Tube bundle (if replaced): $18,500 | Chemical cleaning: $3,200 | Scaffolding: $2,800 | NDT inspection: $3,500',
-      scheduledStartDate: '2026-04-14',
-      scheduledEndDate: '2026-04-16',
-      equipmentId: hxE102.id,
-      assignedToId: personnel[1].id, // Sarah Chen
-    },
-  });
-
-  const wo3 = await gql(client, createWorkOrder, {
-    input: {
-      workOrderNumber: 'WO-2026-0044',
-      title: 'C-201 Vibration Analysis & Bearing Assessment',
-      description: 'Predictive maintenance: vibration trending shows increasing 1x amplitude on drive-end bearing. Assess bearing condition and alignment.',
-      priority: 'MEDIUM',
-      status: 'IN_PROGRESS',
-      type: 'PREDICTIVE',
-      estimatedHours: 8,
-      actualHours: 4,
-      estimatedCost: 12000,
-      internalNotes: '⚠️ CONFIDENTIAL: If bearing defect frequency appears in next analysis, plan emergency shutdown for replacement. Spare bearing in warehouse (SKU: AC-BRG-GT110-THR). Insurance claim ref: CLM-2026-0891.',
-      costBreakdown: 'Vibration analysis: $2,400 | Laser alignment: $3,600 | Bearing (if needed): $4,800 | Labor: $1,200',
-      scheduledStartDate: '2026-04-01',
-      scheduledEndDate: '2026-04-02',
-      actualStartDate: '2026-04-01',
-      equipmentId: compC201.id,
-      assignedToId: personnel[3].id, // Maria Santos
-    },
-  });
-
-  const wo4 = await gql(client, createWorkOrder, {
-    input: {
-      workOrderNumber: 'WO-2026-0045',
-      title: 'PSV-401 Annual Certification Test',
-      description: 'Annual pop-test and recertification of flare header pressure safety valve per API 510 requirements.',
-      priority: 'HIGH',
-      status: 'PLANNED',
-      type: 'CONDITION_BASED',
-      estimatedHours: 6,
-      estimatedCost: 8500,
-      internalNotes: '⚠️ CONFIDENTIAL: Last certification showed borderline seat leakage. If valve fails pop-test, replacement valve is on order (PO-2026-4421, delivery ETA 2 weeks).',
-      costBreakdown: 'Valve testing: $3,500 | Calibration: $2,000 | Documentation/certification: $1,500 | Contingency: $1,500',
-      scheduledStartDate: '2026-04-21',
-      scheduledEndDate: '2026-04-21',
-      equipmentId: valvePSV401.id,
-      assignedToId: personnel[2].id, // James Okafor
-    },
-  });
-
-  const wo5 = await gql(client, createWorkOrder, {
-    input: {
-      workOrderNumber: 'WO-2026-0046',
-      title: 'V-301 Separator Turnaround Inspection',
-      description: 'Major turnaround: internal inspection of three-phase separator including corrosion mapping, weld inspection, and internals replacement.',
-      priority: 'HIGH',
-      status: 'DRAFT',
-      type: 'TURNAROUND',
-      estimatedHours: 120,
-      estimatedCost: 250000,
-      internalNotes: '⚠️ CONFIDENTIAL: Board approval required for expenditure >$200K. CFO pre-approved pending final scope. Contractor bids: TechnipFMC $235K, Wood Group $248K, Worley $262K. Recommend TechnipFMC.',
-      costBreakdown: 'Contractor mobilization: $45,000 | Scaffolding & access: $32,000 | NDT & inspection: $28,000 | Internals replacement: $85,000 | Recoating: $35,000 | Project management: $25,000',
-      scheduledStartDate: '2026-06-01',
-      scheduledEndDate: '2026-06-15',
-      equipmentId: vesselV301.id,
-      assignedToId: personnel[4].id, // Erik Johansson
-    },
-  });
-
-  [wo1, wo2, wo3, wo4, wo5].forEach((w) => log(`  ✅ ${w.workOrderNumber}`, colors.green));
+  const woData = [
+    { workOrderNumber: 'WO-2026-0042', title: 'P-101A Mechanical Seal Replacement', description: 'Elevated vibration and seal leakage detected on crude charge pump P-101A. Replace mechanical seal and inspect impeller wear.', priority: 'URGENT', status: 'SCHEDULED', type: 'CORRECTIVE', estimatedHours: 16, estimatedCost: 45000, internalNotes: '⚠️ CONFIDENTIAL: Vendor quote from Sulzer is $38K for seal kit. Additional $7K budgeted for potential impeller replacement if wear exceeds 15% of original diameter.', costBreakdown: 'Seal kit: $28,000 | Labor (2 techs × 16h): $9,600 | Crane rental: $4,200 | Contingency: $3,200', scheduledStartDate: '2026-04-07', scheduledEndDate: '2026-04-08', equipmentId: pumpP101.id, assignedToId: personnel[0].id },
+    { workOrderNumber: 'WO-2026-0043', title: 'E-102 Tube Bundle Inspection & Cleaning', description: 'Scheduled inspection of crude/heavy naphtha exchanger. Fouling suspected based on declining heat transfer coefficient.', priority: 'HIGH', status: 'PLANNED', type: 'PREVENTIVE', estimatedHours: 24, estimatedCost: 28000, internalNotes: '⚠️ CONFIDENTIAL: Alfa Laval recommends full bundle replacement rather than cleaning. Procurement lead time is 8 weeks.', costBreakdown: 'Tube bundle (if replaced): $18,500 | Chemical cleaning: $3,200 | Scaffolding: $2,800 | NDT inspection: $3,500', scheduledStartDate: '2026-04-14', scheduledEndDate: '2026-04-16', equipmentId: hxE102.id, assignedToId: personnel[1].id },
+    { workOrderNumber: 'WO-2026-0044', title: 'C-201 Vibration Analysis & Bearing Assessment', description: 'Predictive maintenance: vibration trending shows increasing 1x amplitude on drive-end bearing.', priority: 'MEDIUM', status: 'IN_PROGRESS', type: 'PREDICTIVE', estimatedHours: 8, actualHours: 4, estimatedCost: 12000, internalNotes: '⚠️ CONFIDENTIAL: If bearing defect frequency appears in next analysis, plan emergency shutdown. Spare bearing in warehouse (SKU: AC-BRG-GT110-THR). Insurance claim ref: CLM-2026-0891.', costBreakdown: 'Vibration analysis: $2,400 | Laser alignment: $3,600 | Bearing (if needed): $4,800 | Labor: $1,200', scheduledStartDate: '2026-04-01', scheduledEndDate: '2026-04-02', actualStartDate: '2026-04-01', equipmentId: compC201.id, assignedToId: personnel[3].id },
+    { workOrderNumber: 'WO-2026-0045', title: 'PSV-401 Annual Certification Test', description: 'Annual pop-test and recertification of flare header pressure safety valve per API 510 requirements.', priority: 'HIGH', status: 'PLANNED', type: 'CONDITION_BASED', estimatedHours: 6, estimatedCost: 8500, internalNotes: '⚠️ CONFIDENTIAL: Last certification showed borderline seat leakage. Replacement valve on order (PO-2026-4421, ETA 2 weeks).', costBreakdown: 'Valve testing: $3,500 | Calibration: $2,000 | Documentation/certification: $1,500 | Contingency: $1,500', scheduledStartDate: '2026-04-21', scheduledEndDate: '2026-04-21', equipmentId: valvePSV401.id, assignedToId: personnel[2].id },
+    { workOrderNumber: 'WO-2026-0046', title: 'V-301 Separator Turnaround Inspection', description: 'Major turnaround: internal inspection of three-phase separator including corrosion mapping, weld inspection, and internals replacement.', priority: 'HIGH', status: 'DRAFT', type: 'TURNAROUND', estimatedHours: 120, estimatedCost: 250000, internalNotes: '⚠️ CONFIDENTIAL: Board approval required for >$200K. CFO pre-approved. Contractor bids: TechnipFMC $235K, Wood Group $248K, Worley $262K. Recommend TechnipFMC.', costBreakdown: 'Contractor mobilization: $45,000 | Scaffolding: $32,000 | NDT: $28,000 | Internals: $85,000 | Recoating: $35,000 | PM: $25,000', scheduledStartDate: '2026-06-01', scheduledEndDate: '2026-06-15', equipmentId: vesselV301.id, assignedToId: personnel[4].id },
+  ];
+  const workOrders: any[] = [];
+  for (const wo of woData) {
+    const result = await findOrCreate(client, listWorkOrders, 'workOrderNumber', wo.workOrderNumber, createWorkOrder, wo);
+    workOrders.push(result);
+    log(`  ${icon(result)} ${result.workOrderNumber}`, colors.green);
+  }
+  const [wo1, wo2, wo3, wo4, wo5] = workOrders;
 
   // ─── Maintenance Tasks (for WO-2026-0042: Seal Replacement) ───
   log('\n🔨 Creating Maintenance Tasks...', colors.cyan);
 
-  const tasks = await Promise.all([
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-01', description: 'Isolate pump P-101A, lock-out/tag-out, depressurize and drain', procedure: 'SOP-PMP-LOTO-001', status: 'PENDING', sequenceOrder: 1, estimatedMinutes: 60, requiresShutdown: true, safetyPermitRequired: true, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-02', description: 'Remove coupling guard and disconnect coupling', procedure: 'SOP-PMP-CPL-002', status: 'PENDING', sequenceOrder: 2, estimatedMinutes: 45, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-03', description: 'Remove and inspect mechanical seal assembly', procedure: 'SOP-PMP-SEAL-003', status: 'PENDING', sequenceOrder: 3, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-04', description: 'Inspect impeller for wear and erosion, measure clearances', procedure: 'SOP-PMP-IMP-004', status: 'PENDING', sequenceOrder: 4, estimatedMinutes: 60, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-05', description: 'Install new mechanical seal, reassemble pump', procedure: 'SOP-PMP-SEAL-005', status: 'PENDING', sequenceOrder: 5, estimatedMinutes: 120, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-06', description: 'Perform alignment check and reconnect coupling', procedure: 'SOP-PMP-ALN-006', status: 'PENDING', sequenceOrder: 6, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0042-07', description: 'Commission pump: run test, vibration check, seal leak check', procedure: 'SOP-PMP-COM-007', status: 'PENDING', sequenceOrder: 7, estimatedMinutes: 60, requiresShutdown: false, safetyPermitRequired: true, workOrderId: wo1.id } }),
-    // Tasks for WO-2026-0044: Vibration Analysis
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0044-01', description: 'Collect vibration data at all measurement points (DE, NDE, axial)', procedure: 'SOP-VIB-COL-001', status: 'COMPLETED', sequenceOrder: 1, estimatedMinutes: 45, actualMinutes: 40, requiresShutdown: false, safetyPermitRequired: false, workOrderId: wo3.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0044-02', description: 'Analyze vibration spectra, identify fault frequencies', procedure: 'SOP-VIB-ANL-002', status: 'IN_PROGRESS', sequenceOrder: 2, estimatedMinutes: 60, requiresShutdown: false, safetyPermitRequired: false, workOrderId: wo3.id } }),
-    gql(client, createMaintenanceTask, { input: { taskNumber: 'T-0044-03', description: 'Perform laser alignment check on compressor-driver coupling', procedure: 'SOP-ALN-LSR-001', status: 'PENDING', sequenceOrder: 3, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo3.id } }),
-  ]);
-  tasks.forEach((t) => log(`  ✅ ${t.taskNumber}`, colors.green));
+  const taskData = [
+    { taskNumber: 'T-0042-01', description: 'Isolate pump P-101A, lock-out/tag-out, depressurize and drain', procedure: 'SOP-PMP-LOTO-001', status: 'PENDING', sequenceOrder: 1, estimatedMinutes: 60, requiresShutdown: true, safetyPermitRequired: true, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-02', description: 'Remove coupling guard and disconnect coupling', procedure: 'SOP-PMP-CPL-002', status: 'PENDING', sequenceOrder: 2, estimatedMinutes: 45, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-03', description: 'Remove and inspect mechanical seal assembly', procedure: 'SOP-PMP-SEAL-003', status: 'PENDING', sequenceOrder: 3, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-04', description: 'Inspect impeller for wear and erosion, measure clearances', procedure: 'SOP-PMP-IMP-004', status: 'PENDING', sequenceOrder: 4, estimatedMinutes: 60, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-05', description: 'Install new mechanical seal, reassemble pump', procedure: 'SOP-PMP-SEAL-005', status: 'PENDING', sequenceOrder: 5, estimatedMinutes: 120, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-06', description: 'Perform alignment check and reconnect coupling', procedure: 'SOP-PMP-ALN-006', status: 'PENDING', sequenceOrder: 6, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo1.id },
+    { taskNumber: 'T-0042-07', description: 'Commission pump: run test, vibration check, seal leak check', procedure: 'SOP-PMP-COM-007', status: 'PENDING', sequenceOrder: 7, estimatedMinutes: 60, requiresShutdown: false, safetyPermitRequired: true, workOrderId: wo1.id },
+    { taskNumber: 'T-0044-01', description: 'Collect vibration data at all measurement points (DE, NDE, axial)', procedure: 'SOP-VIB-COL-001', status: 'COMPLETED', sequenceOrder: 1, estimatedMinutes: 45, actualMinutes: 40, requiresShutdown: false, safetyPermitRequired: false, workOrderId: wo3.id },
+    { taskNumber: 'T-0044-02', description: 'Analyze vibration spectra, identify fault frequencies', procedure: 'SOP-VIB-ANL-002', status: 'IN_PROGRESS', sequenceOrder: 2, estimatedMinutes: 60, requiresShutdown: false, safetyPermitRequired: false, workOrderId: wo3.id },
+    { taskNumber: 'T-0044-03', description: 'Perform laser alignment check on compressor-driver coupling', procedure: 'SOP-ALN-LSR-001', status: 'PENDING', sequenceOrder: 3, estimatedMinutes: 90, requiresShutdown: true, safetyPermitRequired: false, workOrderId: wo3.id },
+  ];
+  for (const t of taskData) {
+    const result = await findOrCreate(client, listMaintenanceTasks, 'taskNumber', t.taskNumber, createMaintenanceTask, t);
+    log(`  ${icon(result)} ${result.taskNumber}`, colors.green);
+  }
 
   // ─── Inspection Records ───
   log('\n🔍 Creating Inspection Records...', colors.cyan);
 
-  const inspections = await Promise.all([
-    gql(client, createInspectionRecord, {
-      input: {
-        inspectionNumber: 'INS-2026-0101',
-        inspectionType: 'VIBRATION_ANALYSIS',
-        result: 'CONDITIONAL_PASS',
-        findings: 'Elevated 1x vibration at DE bearing (4.2 mm/s vs 2.8 mm/s baseline). Spectrum shows slight misalignment signature.',
-        recommendations: 'Schedule laser alignment check within 30 days. Continue monitoring weekly.',
-        inspectionDate: '2026-03-15',
-        nextDueDate: '2026-04-15',
-        vibrationLevel: 4.2,
-        temperatureReading: 78.5,
-        equipmentId: pumpP101.id,
-        inspectorId: personnel[3].id, // Maria Santos
-      },
-    }),
-    gql(client, createInspectionRecord, {
-      input: {
-        inspectionNumber: 'INS-2026-0102',
-        inspectionType: 'ULTRASONIC',
-        result: 'FAIL',
-        findings: 'Wall thinning detected on tube-side inlet nozzle. Minimum wall thickness 3.2mm vs required 4.5mm. Corrosion rate estimated at 0.4mm/year.',
-        recommendations: 'Replace tube bundle at next available opportunity. Install corrosion coupons for monitoring.',
-        inspectionDate: '2026-03-20',
-        nextDueDate: '2026-09-20',
-        wallThickness: 3.2,
-        temperatureReading: 165.0,
-        pressureReading: 12.5,
-        equipmentId: hxE102.id,
-        inspectorId: personnel[2].id, // James Okafor
-      },
-    }),
-    gql(client, createInspectionRecord, {
-      input: {
-        inspectionNumber: 'INS-2026-0103',
-        inspectionType: 'VIBRATION_ANALYSIS',
-        result: 'REQUIRES_FOLLOWUP',
-        findings: 'Increasing 1x amplitude trend on DE bearing over last 3 months. Current level 5.8 mm/s (alert at 6.5 mm/s). Bearing defect frequency not yet present.',
-        recommendations: 'Increase monitoring frequency to daily. Plan bearing replacement during next scheduled outage.',
-        inspectionDate: '2026-04-01',
-        nextDueDate: '2026-04-08',
-        vibrationLevel: 5.8,
-        temperatureReading: 92.3,
-        equipmentId: compC201.id,
-        inspectorId: personnel[3].id,
-      },
-    }),
-    gql(client, createInspectionRecord, {
-      input: {
-        inspectionNumber: 'INS-2026-0104',
-        inspectionType: 'PRESSURE_TEST',
-        result: 'PASS',
-        findings: 'PSV set pressure verified at 15.5 barg (design: 15.5 barg). Seat leakage test passed. Blowdown within spec at 10%.',
-        recommendations: 'No action required. Next certification due in 12 months.',
-        inspectionDate: '2026-01-05',
-        nextDueDate: '2027-01-05',
-        pressureReading: 15.5,
-        equipmentId: valvePSV401.id,
-        inspectorId: personnel[2].id,
-      },
-    }),
-    gql(client, createInspectionRecord, {
-      input: {
-        inspectionNumber: 'INS-2026-0105',
-        inspectionType: 'THERMOGRAPHIC',
-        result: 'PASS',
-        findings: 'Thermal imaging of separator vessel shows uniform temperature distribution. No hot spots or insulation defects detected.',
-        recommendations: 'Continue annual thermographic survey schedule.',
-        inspectionDate: '2026-02-10',
-        nextDueDate: '2027-02-10',
-        temperatureReading: 45.2,
-        pressureReading: 8.3,
-        equipmentId: vesselV301.id,
-        inspectorId: personnel[2].id,
-      },
-    }),
-  ]);
-  inspections.forEach((i) => log(`  ✅ ${i.inspectionNumber}`, colors.green));
+  const inspData = [
+    { inspectionNumber: 'INS-2026-0101', inspectionType: 'VIBRATION_ANALYSIS', result: 'CONDITIONAL_PASS', findings: 'Elevated 1x vibration at DE bearing (4.2 mm/s vs 2.8 mm/s baseline). Spectrum shows slight misalignment signature.', recommendations: 'Schedule laser alignment check within 30 days. Continue monitoring weekly.', inspectionDate: '2026-03-15', nextDueDate: '2026-04-15', vibrationLevel: 4.2, temperatureReading: 78.5, equipmentId: pumpP101.id, inspectorId: personnel[3].id },
+    { inspectionNumber: 'INS-2026-0102', inspectionType: 'ULTRASONIC', result: 'FAIL', findings: 'Wall thinning detected on tube-side inlet nozzle. Minimum wall thickness 3.2mm vs required 4.5mm. Corrosion rate estimated at 0.4mm/year.', recommendations: 'Replace tube bundle at next available opportunity. Install corrosion coupons for monitoring.', inspectionDate: '2026-03-20', nextDueDate: '2026-09-20', wallThickness: 3.2, temperatureReading: 165.0, pressureReading: 12.5, equipmentId: hxE102.id, inspectorId: personnel[2].id },
+    { inspectionNumber: 'INS-2026-0103', inspectionType: 'VIBRATION_ANALYSIS', result: 'REQUIRES_FOLLOWUP', findings: 'Increasing 1x amplitude trend on DE bearing over last 3 months. Current level 5.8 mm/s (alert at 6.5 mm/s). Bearing defect frequency not yet present.', recommendations: 'Increase monitoring frequency to daily. Plan bearing replacement during next scheduled outage.', inspectionDate: '2026-04-01', nextDueDate: '2026-04-08', vibrationLevel: 5.8, temperatureReading: 92.3, equipmentId: compC201.id, inspectorId: personnel[3].id },
+    { inspectionNumber: 'INS-2026-0104', inspectionType: 'PRESSURE_TEST', result: 'PASS', findings: 'PSV set pressure verified at 15.5 barg (design: 15.5 barg). Seat leakage test passed. Blowdown within spec at 10%.', recommendations: 'No action required. Next certification due in 12 months.', inspectionDate: '2026-01-05', nextDueDate: '2027-01-05', pressureReading: 15.5, equipmentId: valvePSV401.id, inspectorId: personnel[2].id },
+    { inspectionNumber: 'INS-2026-0105', inspectionType: 'THERMOGRAPHIC', result: 'PASS', findings: 'Thermal imaging of separator vessel shows uniform temperature distribution. No hot spots or insulation defects detected.', recommendations: 'Continue annual thermographic survey schedule.', inspectionDate: '2026-02-10', nextDueDate: '2027-02-10', temperatureReading: 45.2, pressureReading: 8.3, equipmentId: vesselV301.id, inspectorId: personnel[2].id },
+  ];
+  for (const ins of inspData) {
+    const result = await findOrCreate(client, listInspectionRecords, 'inspectionNumber', ins.inspectionNumber, createInspectionRecord, ins);
+    log(`  ${icon(result)} ${result.inspectionNumber}`, colors.green);
+  }
 
   // ─── Summary ───
   log('\n' + '═'.repeat(60), colors.bright);
@@ -473,6 +314,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  log(`\n❌ Fatal error: ${err.message || err}`, colors.red);
+  log(`\n❌ Fatal error: ${err.message || JSON.stringify(err, null, 2)}`, colors.red);
   process.exit(1);
 });
