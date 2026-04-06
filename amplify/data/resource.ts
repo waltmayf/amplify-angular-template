@@ -97,6 +97,9 @@ const schema = a.schema({
       actualHours: a.float(),
       estimatedCost: a.float(),
       actualCost: a.float(),
+      // 🔒 Auth-gated fields — only visible when signed in via Auth0
+      internalNotes: a.string().authorization((allow) => [allow.authenticated()]),
+      costBreakdown: a.string().authorization((allow) => [allow.authenticated()]),
       scheduledStartDate: a.date(),
       scheduledEndDate: a.date(),
       actualStartDate: a.date(),
@@ -107,7 +110,7 @@ const schema = a.schema({
       assignedTo: a.belongsTo('Personnel', 'assignedToId'),
       tasks: a.hasMany('MaintenanceTask', 'workOrderId'),
     })
-    .authorization((allow) => [allow.publicApiKey()]),
+    .authorization((allow) => [allow.publicApiKey(), allow.authenticated()]),
 
   // ─── Maintenance Tasks within a Work Order ───
   MaintenanceTask: a

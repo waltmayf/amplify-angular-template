@@ -323,9 +323,11 @@ export class ExplorerComponent implements OnInit {
           this.breadcrumb = this.breadcrumb.slice(0, 3);
           this.breadcrumb.push({ label: item.equipmentTag || item.name, level: 'equipment', data: item });
           // Load components, work orders, and inspections in parallel
+          // Use userPool auth mode for work orders when authenticated to access gated fields
+          const woAuthMode = this.isAuthenticated ? { authMode: 'userPool' as const } : {};
           const [compResult, woResult, insResult] = await Promise.all([
             client.models.Component.list({ filter: { equipmentId: { eq: item.id } } }),
-            client.models.WorkOrder.list({ filter: { equipmentId: { eq: item.id } } }),
+            client.models.WorkOrder.list({ filter: { equipmentId: { eq: item.id } }, ...woAuthMode }),
             client.models.InspectionRecord.list({ filter: { equipmentId: { eq: item.id } } }),
           ]);
           this.selectedItem = {
